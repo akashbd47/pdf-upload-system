@@ -245,55 +245,127 @@ def upload_api():
     return f"Completed | Deleted: {deleted} | Inserted: {inserted}"
 
 
+
 @app.route("/")
 def home():
     return """
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>PDF Upload Panel</title>
-    </head>
+<!DOCTYPE html>
+<html>
+<head>
 
-    <body>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <h3>Loan Monthly Upload</h3>
+<title>Loan Upload Panel</title>
 
-    <input type="file" id="file" accept="application/pdf">
+<style>
 
-    <button onclick="upload()">Upload PDF</button>
+body{
+    font-family: Arial;
+    background:#f4f6fb;
+    margin:0;
+}
 
-    <div id="result" style="margin-top:20px;font-weight:bold;"></div>
+.container{
+    max-width:400px;
+    margin:60px auto;
+    background:white;
+    padding:25px;
+    border-radius:12px;
+    box-shadow:0 0 15px rgba(0,0,0,0.08);
+}
 
-    <script>
+h2{
+    text-align:center;
+    color:#4b3fe4;
+}
 
-    async function upload(){
+input{
+    width:100%;
+    margin-top:15px;
+}
 
-      let file = document.getElementById("file").files[0];
+button{
+    width:100%;
+    margin-top:15px;
+    padding:12px;
+    border:none;
+    border-radius:8px;
+    background:#4b3fe4;
+    color:white;
+    font-size:16px;
+    cursor:pointer;
+}
 
-      if(!file){
-        alert("Select PDF first");
-        return;
-      }
+button:hover{
+    background:#372fd1;
+}
 
-      let fd = new FormData();
-      fd.append("file", file);
+.status{
+    margin-top:20px;
+    padding:12px;
+    border-radius:8px;
+    text-align:center;
+    font-weight:bold;
+}
 
-      document.getElementById("result").innerHTML="Uploading... Please wait";
+.processing{
+    background:#fff3cd;
+    color:#856404;
+}
 
-      let res = await fetch("/upload",{
-          method:"POST",
-          body:fd
-      });
+.success{
+    background:#d4edda;
+    color:#155724;
+}
 
-      let text = await res.text();
+</style>
 
-      document.getElementById("result").innerHTML=text;
+</head>
 
-    }
+<body>
 
-    </script>
+<div class="container">
 
-    </body>
-    </html>
-    """
+<h2>Loan Monthly Upload</h2>
+
+<input type="file" id="file" accept="application/pdf">
+
+<button onclick="upload()">Upload PDF</button>
+
+<div id="result"></div>
+
+</div>
+
+<script>
+
+async function upload(){
+
+let file=document.getElementById("file").files[0];
+
+if(!file){
+alert("Select PDF first");
+return;
+}
+
+let fd=new FormData();
+fd.append("file",file);
+
+let result=document.getElementById("result");
+
+result.className="status processing";
+result.innerHTML="Processing... please wait";
+
+let res=await fetch("/upload",{method:"POST",body:fd});
+
+let text=await res.text();
+
+result.className="status success";
+result.innerHTML=text;
+
+}
+
+</script>
+
+</body>
+</html>
+"""
