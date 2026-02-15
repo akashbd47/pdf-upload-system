@@ -5,7 +5,6 @@ from firebase_admin import credentials, firestore
 import re
 import os
 import json
-import threading
 import tempfile
 
 # ========= CONFIG =========
@@ -15,24 +14,20 @@ COLLECTION = "LoanMonthlyData"
 # ========= FIREBASE INIT =========
 
 firebase_json = os.environ.get("FIREBASE_KEY")
+
 cred_dict = json.loads(firebase_json)
+
 cred = credentials.Certificate(cred_dict)
+
 firebase_admin.initialize_app(cred)
+
 db = firestore.client()
-
-# ========= PROCESS STATUS =========
-
-PROCESS_STATUS = {
-    "status": "idle",
-    "deleted": 0,
-    "inserted": 0
-}
 
 # ========= FLASK =========
 
 app = Flask(__name__)
 
-# ========= HELPERS (UNCHANGED LOGIC) =========
+# ========= HELPERS (UNCHANGED) =========
 
 def extract_phone(text):
     m = re.search(r"(01\d{9}|8801\d{9})", text)
@@ -119,7 +114,7 @@ def is_header_or_footer(line):
     low = line.lower()
     return any(k in low for k in keywords)
 
-# ========= PARSER (UNCHANGED LOGIC) =========
+# ========= PARSER (UNCHANGED) =========
 
 def parse_pdf(pdf_path):
 
@@ -166,36 +161,53 @@ def parse_pdf(pdf_path):
 
     return records
 
-# ========= BACKGROUND PROCESS =========
+# ========= FAST UPLOAD (BATCH DELETE + INSERT) =========
 
-def background_process(file_path):
-
-    global PROCESS_STATUS
-
-    PROCESS_STATUS["status"] = "processing"
-
-    data = parse_pdf(file_path)
-
-    if not data:
-        PROCESS_STATUS["status"] = "failed"
-        return
+def upload(records):
 
     col = db.collection(COLLECTION)
 
     deleted = 0
 
-    # ORIGINAL delete logic
-    for d in col.stream():
-        d.reference.delete()
+    docs = list(col.stream())
+
+    batch = db.batch()
+    count = 0
+
+    for d in docs:
+        batch.delete(d.reference)
         deleted += 1
+        count += 1
 
-    # ORIGINAL insert logic
-    for r in data:
-        col.add(r)
+        if count == 400:
+            batch.commit()
+            batch = db.batch()
+            count = 0
 
-    PROCESS_STATUS["status"] = "completed"
-    PROCESS_STATUS["deleted"] = deleted
-    PROCESS_STATUS["inserted"] = len(data)
+    if count > 0:
+        batch.commit()
+
+    inserted = 0
+    batch = db.batch()
+    count = 0
+
+    for r in records:
+
+        ref = col.document()
+        batch.set(ref, r)
+
+        inserted += 1
+        count += 1
+
+        if count == 400:
+            batch.commit()
+            batch = db.batch()
+            count = 0
+
+    if count > 0:
+        batch.commit()
+
+    return deleted, inserted
 
 # ========= API =========
 
@@ -208,14 +220,14 @@ def upload_api():
 
     file.save(temp.name)
 
-    threading.Thread(target=background_process, args=(temp.name,)).start()
+    data = parse_pdf(temp.name)
 
-    return "Upload received. Processing started."
+    if not data:
+        return "No data parsed"
 
+    deleted, inserted = upload(data)
 
-@app.route("/status")
-def status():
-    return jsonify(PROCESS_STATUS)
+    return f"Completed | Deleted: {deleted} | Inserted: {inserted}"
 
 
 @app.route("/")
