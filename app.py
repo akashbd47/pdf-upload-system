@@ -5,16 +5,23 @@ from firebase_admin import credentials, firestore
 import re
 import os
 import json
+import threading
+import tempfile
 
 # ========= CONFIG =========
+
 COLLECTION = "LoanMonthlyData"
 
 # ========= FIREBASE INIT =========
 
 firebase_json = os.environ.get("FIREBASE_KEY")
+
 cred_dict = json.loads(firebase_json)
+
 cred = credentials.Certificate(cred_dict)
+
 firebase_admin.initialize_app(cred)
+
 db = firestore.client()
 
 # ========= FLASK =========
@@ -46,14 +53,6 @@ def extract_loan_sl(text):
     return m.group() if m else None
 
 
-def extract_loan_case(text, loan_sl):
-    if not loan_sl:
-        return None
-    left = text.split(loan_sl)[0].strip()
-    parts = left.split()
-    return parts[-1] if parts else None
-
-
 def extract_name(text, loan_sl):
 
     if not loan_sl:
@@ -64,57 +63,27 @@ def extract_name(text, loan_sl):
     right = re.sub(r"(01\d{9}|8801\d{9})", "", right)
     right = re.sub(r"\d{2}[/-]\d{2}[/-]\d{4}", "", right)
     right = re.sub(r"\d{5,}", "", right)
-    right = re.sub(r"\bU\.?C\b[:\-]?", "", right, flags=re.IGNORECASE)
 
-    words = []
+    words = [w.capitalize() for w in right.split() if w.isalpha()]
 
-    for w in right.split():
-        if w.isalpha():
-            words.append(w.capitalize())
-
-    name = " ".join(words).strip()
-    return name if name else None
-
-
-def extract_loan_duration(text, loan_sl):
-
-    if not loan_sl:
-        return None
-
-    right = text.split(loan_sl, 1)[1]
-
-    right = re.sub(r"\d{2}[/-]\d{2}[/-]\d{4}", "", right)
-    right = re.sub(r"(01\d{9}|8801\d{9})", "", right)
-    right = re.sub(r"\d{5,}", "", right)
-
-    numbers = re.findall(r"\b\d{2}\b", right)
-
-    for n in numbers:
-        val = int(n)
-        if 6 <= val <= 120:
-            return val
-
-    return None
+    return " ".join(words).strip()
 
 
 def is_header_or_footer(line):
 
-    keywords = [
-        "bank", "statement", "report", "branch",
-        "page", "loan case", "loan sl",
-        "customer name", "balance", "total"
-    ]
+    keywords = ["bank","statement","report","branch","page","loan case","loan sl","customer name","balance","total"]
 
     low = line.lower()
+
     return any(k in low for k in keywords)
 
 # ========= PARSER =========
 
-def parse_pdf(file):
+def parse_pdf(file_path):
 
     records = []
 
-    with pdfplumber.open(file) as pdf:
+    with pdfplumber.open(file_path) as pdf:
 
         for page in pdf.pages:
 
@@ -141,33 +110,36 @@ def parse_pdf(file):
                 if not name or balance is None:
                     continue
 
-                record = {
-                    "loanCaseNo": extract_loan_case(line, loan_sl),
+                records.append({
                     "loanSlNo": loan_sl,
                     "customerName": name,
                     "phoneLast11": extract_phone(line),
                     "loanStartDate": extract_date(line),
-                    "loanDurationMonth": extract_loan_duration(line, loan_sl),
                     "balance": balance
-                }
-
-                records.append(record)
+                })
 
     return records
 
-# ========= BATCH UPLOAD =========
+# ========= BACKGROUND JOB =========
 
-def upload(records):
+def background_process(file_path):
+
+    print("Background processing started")
+
+    data = parse_pdf(file_path)
+
+    if not data:
+        print("No data parsed")
+        return
 
     col = db.collection(COLLECTION)
 
-    deleted = 0
+    # batch delete
     batch = db.batch()
     count = 0
 
     for d in col.stream():
         batch.delete(d.reference)
-        deleted += 1
         count += 1
 
         if count == 400:
@@ -178,15 +150,16 @@ def upload(records):
     if count > 0:
         batch.commit()
 
-    inserted = 0
+    # batch insert
     batch = db.batch()
     count = 0
 
-    for r in records:
+    for r in data:
+
         ref = col.document()
+
         batch.set(ref, r)
 
-        inserted += 1
         count += 1
 
         if count == 400:
@@ -197,7 +170,7 @@ def upload(records):
     if count > 0:
         batch.commit()
 
-    return deleted, inserted
+    print("Background processing complete")
 
 # ========= API =========
 
@@ -206,15 +179,13 @@ def upload_api():
 
     file = request.files['file']
 
-    data = parse_pdf(file)
+    temp = tempfile.NamedTemporaryFile(delete=False)
 
-    if data:
-        deleted, inserted = upload(data)
-        return f"Upload Complete | Deleted: {deleted} | Inserted: {inserted}"
+    file.save(temp.name)
 
-    return "No data parsed"
+    threading.Thread(target=background_process, args=(temp.name,)).start()
 
-# ========= RUN =========
+    return "Upload received. Processing started in background."
 
 @app.route("/")
 def home():
