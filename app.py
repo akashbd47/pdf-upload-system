@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, jsonify
 import pdfplumber
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -23,6 +23,14 @@ cred = credentials.Certificate(cred_dict)
 firebase_admin.initialize_app(cred)
 
 db = firestore.client()
+
+# ========= PROCESS STATUS =========
+
+PROCESS_STATUS = {
+    "status": "idle",
+    "deleted": 0,
+    "inserted": 0
+}
 
 # ========= FLASK =========
 
@@ -71,7 +79,11 @@ def extract_name(text, loan_sl):
 
 def is_header_or_footer(line):
 
-    keywords = ["bank","statement","report","branch","page","loan case","loan sl","customer name","balance","total"]
+    keywords = [
+        "bank","statement","report","branch",
+        "page","loan case","loan sl",
+        "customer name","balance","total"
+    ]
 
     low = line.lower()
 
@@ -120,26 +132,30 @@ def parse_pdf(file_path):
 
     return records
 
-# ========= BACKGROUND JOB =========
+# ========= BACKGROUND PROCESS =========
 
 def background_process(file_path):
 
-    print("Background processing started")
+    global PROCESS_STATUS
+
+    PROCESS_STATUS["status"] = "processing"
 
     data = parse_pdf(file_path)
 
     if not data:
-        print("No data parsed")
+        PROCESS_STATUS["status"] = "failed"
         return
 
     col = db.collection(COLLECTION)
 
-    # batch delete
+    deleted = 0
     batch = db.batch()
     count = 0
 
     for d in col.stream():
+
         batch.delete(d.reference)
+        deleted += 1
         count += 1
 
         if count == 400:
@@ -150,7 +166,7 @@ def background_process(file_path):
     if count > 0:
         batch.commit()
 
-    # batch insert
+    inserted = 0
     batch = db.batch()
     count = 0
 
@@ -160,6 +176,7 @@ def background_process(file_path):
 
         batch.set(ref, r)
 
+        inserted += 1
         count += 1
 
         if count == 400:
@@ -170,7 +187,9 @@ def background_process(file_path):
     if count > 0:
         batch.commit()
 
-    print("Background processing complete")
+    PROCESS_STATUS["status"] = "completed"
+    PROCESS_STATUS["deleted"] = deleted
+    PROCESS_STATUS["inserted"] = inserted
 
 # ========= API =========
 
@@ -185,7 +204,13 @@ def upload_api():
 
     threading.Thread(target=background_process, args=(temp.name,)).start()
 
-    return "Upload received. Processing started in background."
+    return "Upload received. Processing started."
+
+
+@app.route("/status")
+def status():
+    return jsonify(PROCESS_STATUS)
+
 
 @app.route("/")
 def home():
