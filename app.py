@@ -8,21 +8,16 @@ import json
 
 # ========= CONFIG =========
 COLLECTION = "LoanMonthlyData"
-# ==========================
 
-# ========= FIREBASE INIT (ENV VARIABLE) =========
+# ========= FIREBASE INIT =========
 
 firebase_json = os.environ.get("FIREBASE_KEY")
-
 cred_dict = json.loads(firebase_json)
-
 cred = credentials.Certificate(cred_dict)
-
 firebase_admin.initialize_app(cred)
-
 db = firestore.client()
 
-# ===============================================
+# ========= FLASK =========
 
 app = Flask(__name__)
 
@@ -111,7 +106,6 @@ def is_header_or_footer(line):
     ]
 
     low = line.lower()
-
     return any(k in low for k in keywords)
 
 # ========= PARSER =========
@@ -161,25 +155,51 @@ def parse_pdf(file):
 
     return records
 
-# ========= UPLOAD =========
+# ========= BATCH UPLOAD =========
 
 def upload(records):
 
     col = db.collection(COLLECTION)
 
     deleted = 0
+    batch = db.batch()
+    count = 0
 
     for d in col.stream():
-        d.reference.delete()
+        batch.delete(d.reference)
         deleted += 1
+        count += 1
+
+        if count == 400:
+            batch.commit()
+            batch = db.batch()
+            count = 0
+
+    if count > 0:
+        batch.commit()
+
+    inserted = 0
+    batch = db.batch()
+    count = 0
 
     for r in records:
-        col.add(r)
+        ref = col.document()
+        batch.set(ref, r)
 
-    print(f"Old records deleted: {deleted}")
-    print(f"New records inserted: {len(records)}")
+        inserted += 1
+        count += 1
 
-# ========= API ROUTE =========
+        if count == 400:
+            batch.commit()
+            batch = db.batch()
+            count = 0
+
+    if count > 0:
+        batch.commit()
+
+    return deleted, inserted
+
+# ========= API =========
 
 @app.route("/upload", methods=["POST"])
 def upload_api():
@@ -189,12 +209,13 @@ def upload_api():
     data = parse_pdf(file)
 
     if data:
-        upload(data)
-        return "Upload Success"
+        deleted, inserted = upload(data)
+        return f"Upload Complete | Deleted: {deleted} | Inserted: {inserted}"
 
     return "No data parsed"
 
 # ========= RUN =========
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+@app.route("/")
+def home():
+    return "Server Running OK"
