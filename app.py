@@ -27,7 +27,7 @@ db = firestore.client()
 
 app = Flask(__name__)
 
-# ========= HELPERS (UNCHANGED) =========
+# ========= HELPERS =========
 
 def extract_phone(text):
     m = re.search(r"(01\d{9}|8801\d{9})", text)
@@ -60,6 +60,8 @@ def extract_loan_case(text, loan_sl):
     return parts[-1] if parts else None
 
 
+# 🔥 SMART NAME PARSER (UPDATED ONLY)
+
 def extract_name(text, loan_sl):
 
     if not loan_sl:
@@ -67,18 +69,31 @@ def extract_name(text, loan_sl):
 
     right = text.split(loan_sl, 1)[1]
 
+    # Remove phone, date, balance
     right = re.sub(r"(01\d{9}|8801\d{9})", "", right)
     right = re.sub(r"\d{2}[/-]\d{2}[/-]\d{4}", "", right)
     right = re.sub(r"\d{5,}", "", right)
+
+    # Remove UC / U.C / UC:
     right = re.sub(r"\bU\.?C\b[:\-]?", "", right, flags=re.IGNORECASE)
 
     words = []
 
     for w in right.split():
-        if w.isalpha():
-            words.append(w.capitalize())
+
+        # keep alphabets + dot (S.M., Md., A.K.M.)
+        clean = re.sub(r"[^A-Za-z\.]", "", w)
+
+        if clean:
+
+            # keep uppercase initials as is
+            if clean.isupper():
+                words.append(clean)
+            else:
+                words.append(clean.capitalize())
 
     name = " ".join(words).strip()
+
     return name if name else None
 
 
@@ -114,7 +129,7 @@ def is_header_or_footer(line):
     low = line.lower()
     return any(k in low for k in keywords)
 
-# ========= PARSER (UNCHANGED) =========
+# ========= PARSER =========
 
 def parse_pdf(pdf_path):
 
@@ -161,7 +176,7 @@ def parse_pdf(pdf_path):
 
     return records
 
-# ========= FAST UPLOAD (BATCH DELETE + INSERT) =========
+# ========= FAST UPLOAD =========
 
 def upload(records):
 
