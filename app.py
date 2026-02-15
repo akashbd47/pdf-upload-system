@@ -247,4 +247,53 @@ def upload_api():
 
 @app.route("/")
 def home():
-    return "Server Running OK"
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PDF Upload Panel</title>
+    </head>
+
+    <body>
+
+    <h3>Loan Monthly Upload</h3>
+
+    <input type="file" id="file" accept="application/pdf">
+
+    <button onclick="upload()">Upload PDF</button>
+
+    <div id="result" style="margin-top:20px;font-weight:bold;"></div>
+
+    <script>
+
+    async function upload(){
+
+      let file = document.getElementById("file").files[0];
+
+      if(!file){
+        alert("Select PDF first");
+        return;
+      }
+
+      let fd = new FormData();
+      fd.append("file", file);
+
+      document.getElementById("result").innerHTML="Uploading... Please wait";
+
+      let res = await fetch("/upload",{
+          method:"POST",
+          body:fd
+      });
+
+      let text = await res.text();
+
+      document.getElementById("result").innerHTML=text;
+
+    }
+
+    </script>
+
+    </body>
+    </html>
+    """
