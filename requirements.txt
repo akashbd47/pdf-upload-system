@@ -1,0 +1,4 @@
+flask
+pdfplumber
+firebase-admin
+gunicorn
