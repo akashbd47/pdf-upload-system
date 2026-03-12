@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request
 import pdfplumber
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -60,8 +60,6 @@ def extract_loan_case(text, loan_sl):
     return parts[-1] if parts else None
 
 
-# 🔥 SMART NAME PARSER (UPDATED ONLY)
-
 def extract_name(text, loan_sl):
 
     if not loan_sl:
@@ -69,24 +67,19 @@ def extract_name(text, loan_sl):
 
     right = text.split(loan_sl, 1)[1]
 
-    # Remove phone, date, balance
     right = re.sub(r"(01\d{9}|8801\d{9})", "", right)
     right = re.sub(r"\d{2}[/-]\d{2}[/-]\d{4}", "", right)
     right = re.sub(r"\d{5,}", "", right)
-
-    # Remove UC / U.C / UC:
     right = re.sub(r"\bU\.?C\b[:\-]?", "", right, flags=re.IGNORECASE)
 
     words = []
 
     for w in right.split():
 
-        # keep alphabets + dot (S.M., Md., A.K.M.)
         clean = re.sub(r"[^A-Za-z\.]", "", w)
 
         if clean:
 
-            # keep uppercase initials as is
             if clean.isupper():
                 words.append(clean)
             else:
@@ -222,6 +215,12 @@ def upload(records):
     if count > 0:
         batch.commit()
 
+    # ===== SAVE LAST UPDATE TIME =====
+
+    db.collection("MetaData").document("Loan Data Update").set({
+        "updateTime": firestore.SERVER_TIMESTAMP
+    })
+
     return deleted, inserted
 
 # ========= API =========
@@ -244,7 +243,7 @@ def upload_api():
 
     return f"Completed | Deleted: {deleted} | Inserted: {inserted}"
 
-
+# ========= PANEL =========
 
 @app.route("/")
 def home():
@@ -260,62 +259,62 @@ def home():
 <style>
 
 body{
-    font-family: Arial;
-    background:#f4f6fb;
-    margin:0;
+font-family:Arial;
+background:#f4f6fb;
+margin:0;
 }
 
 .container{
-    max-width:400px;
-    margin:60px auto;
-    background:white;
-    padding:25px;
-    border-radius:12px;
-    box-shadow:0 0 15px rgba(0,0,0,0.08);
+max-width:400px;
+margin:60px auto;
+background:white;
+padding:25px;
+border-radius:12px;
+box-shadow:0 0 15px rgba(0,0,0,0.08);
 }
 
 h2{
-    text-align:center;
-    color:#4b3fe4;
+text-align:center;
+color:#4b3fe4;
 }
 
 input{
-    width:100%;
-    margin-top:15px;
+width:100%;
+margin-top:15px;
 }
 
 button{
-    width:100%;
-    margin-top:15px;
-    padding:12px;
-    border:none;
-    border-radius:8px;
-    background:#4b3fe4;
-    color:white;
-    font-size:16px;
-    cursor:pointer;
+width:100%;
+margin-top:15px;
+padding:12px;
+border:none;
+border-radius:8px;
+background:#4b3fe4;
+color:white;
+font-size:16px;
+cursor:pointer;
 }
 
 button:hover{
-    background:#372fd1;
+background:#372fd1;
 }
 
 .status{
-    margin-top:20px;
-    padding:12px;
-    border-radius:8px;
-    text-align:center;
-    font-weight:bold;
+margin-top:20px;
+padding:12px;
+border-radius:8px;
+text-align:center;
+font-weight:bold;
 }
 
 .processing{
-    background:#fff3cd;
-    color:#856404;
+background:#fff3cd;
+color:#856404;
 }
 
 .success{
-    background:#d4edda;
-    color:#155724;
+background:#d4edda;
+color:#155724;
 }
 
 </style>
