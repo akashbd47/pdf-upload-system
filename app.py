@@ -224,7 +224,7 @@ def upload(records):
         inserted += 1
         count += 1
 
-        if count == 400:
+        if count == 200:
             batch.commit()
             batch = db.batch()
             count = 0
