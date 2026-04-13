@@ -6,6 +6,8 @@ import re
 import os
 import json
 import tempfile
+import threading
+
 
 # ========= CONFIG =========
 
@@ -168,6 +170,21 @@ def parse_pdf(pdf_path):
                 records.append(record)
 
     return records
+# ========= added it =========
+def process_file(path):
+    print("Started processing")
+
+    data = parse_pdf(path)
+
+    print("Parsed:", len(data))
+
+    if not data:
+        print("No data found")
+        return
+
+    deleted, inserted = upload(data)
+
+    print("Done:", deleted, inserted)
 
 # ========= FAST UPLOAD =========
 
@@ -187,7 +204,7 @@ def upload(records):
         deleted += 1
         count += 1
 
-        if count == 400:
+        if count == 200:
             batch.commit()
             batch = db.batch()
             count = 0
@@ -234,15 +251,9 @@ def upload_api():
 
     file.save(temp.name)
 
-    data = parse_pdf(temp.name)
+    threading.Thread(target=process_file, args=(temp.name,), daemon=True).start()
 
-    if not data:
-        return "No data parsed"
-
-    deleted, inserted = upload(data)
-
-    return f"Completed | Deleted: {deleted} | Inserted: {inserted}"
-
+    return "Processing started... wait 30 sec"
 # ========= PANEL =========
 
 @app.route("/")
