@@ -336,7 +336,7 @@ color:#155724;
 
 <div class="container">
 
-<h2>Loan Monthly Upload</h2>
+<h2>Daily Loan Balance Uploader</h2>
 
 <input type="file" id="file" accept="application/pdf">
 
