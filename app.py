@@ -54,6 +54,14 @@ def extract_loan_sl(text):
     return m.group() if m else None
 
 
+def extract_loan_programme_code(loan_sl):
+    # loanSlNo format: 0536-0307-00325 -> middle part "0307"
+    if not loan_sl:
+        return None
+    parts = loan_sl.split("-")
+    return parts[1] if len(parts) == 3 else None
+
+
 def extract_loan_case(text, loan_sl):
     if not loan_sl:
         return None
@@ -160,6 +168,7 @@ def parse_pdf(pdf_path):
                 record = {
                     "loanCaseNo": extract_loan_case(line, loan_sl),
                     "loanSlNo": loan_sl,
+                    "loanProgrammeCode": extract_loan_programme_code(loan_sl),
                     "customerName": name,
                     "phoneLast11": extract_phone(line),
                     "loanStartDate": extract_date(line),
